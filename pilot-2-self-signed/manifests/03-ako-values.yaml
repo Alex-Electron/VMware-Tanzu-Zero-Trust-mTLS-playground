@@ -1,0 +1,35 @@
+AKOSettings:
+  clusterName: 'tkc-01-mtls'
+  istioEnabled: true
+  enableEVH: true
+  cniPlugin: 'antrea'
+  disableStaticRouteSync: 'false'
+  primaryInstance: true
+
+featureGates:
+  GatewayAPI: true
+
+NetworkSettings:
+  vipNetworkList:
+   - networkName: net-10.144.6
+     cidr: 10.144.6.0/24
+  nodeNetworkList:
+   - networkName: net-10.144.7
+     cidr: 10.144.7.0/24
+
+L7Settings:
+  serviceType: ClusterIP
+
+L4Settings:
+  autoFQDN: default
+
+ControllerSettings:
+  serviceEngineGroupName: ako-se-group
+  controllerVersion: '31.2.2'
+  cloudName: n2-vc
+  controllerHost: '10.0.20.80'
+  tenantName: admin
+
+avicredentials:
+  username: admin
+  password: VMware1!

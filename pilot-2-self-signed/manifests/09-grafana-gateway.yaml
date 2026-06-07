@@ -1,0 +1,64 @@
+# Gateway + HTTPRoutes exposing grafana over HTTPS (with HTTP->HTTPS redirect).
+# CHANGE every hostname below to your own domain.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: grafana-gateway
+  namespace: istio-system
+spec:
+  gatewayClassName: istio
+  listeners:
+  - name: https-grafana
+    hostname: "grafana.n2.nested.sclabs.cloud"   # domain from BASE_DOMAIN (env.sh), rendered by step3
+    port: 443
+    protocol: HTTPS
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - name: grafana-tls
+    allowedRoutes:
+      namespaces:
+        from: Same
+  - name: http-grafana
+    hostname: "grafana.n2.nested.sclabs.cloud"   # domain from BASE_DOMAIN (env.sh), rendered by step3
+    port: 80
+    protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+# Serve grafana over HTTPS
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+  namespace: istio-system
+spec:
+  parentRefs:
+  - name: grafana-gateway
+    sectionName: https-grafana
+  hostnames:
+  - "grafana.n2.nested.sclabs.cloud"             # domain from BASE_DOMAIN (env.sh), rendered by step3
+  rules:
+  - backendRefs:
+    - name: grafana
+      port: 3000
+---
+# HTTP -> HTTPS redirect
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana-redirect
+  namespace: istio-system
+spec:
+  parentRefs:
+  - name: grafana-gateway
+    sectionName: http-grafana
+  hostnames:
+  - "grafana.n2.nested.sclabs.cloud"             # domain from BASE_DOMAIN (env.sh), rendered by step3
+  rules:
+  - filters:
+    - type: RequestRedirect
+      requestRedirect:
+        scheme: https
+        statusCode: 301

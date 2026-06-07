@@ -1,0 +1,37 @@
+# Even load generator hitting all 3 modes through their ingress gateways (Istio for all).
+# Needed for a fair latency/CPU/network comparison and to keep Kiali/Grafana graphs non-empty.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: loadgen
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: privileged
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: loadgen
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: loadgen }
+  template:
+    metadata:
+      labels: { app: loadgen }
+    spec:
+      containers:
+      - name: loadgen
+        image: curlimages/curl
+        command: ["/bin/sh","-c"]
+        args:
+        - |
+          echo "loadgen: even load on sidecar/ambient/pure-k8s via the gateways"
+          while true; do
+            # CHANGE the Host headers to your domain (bookinfo-*.<your-domain>)
+            curl -s -o /dev/null --max-time 5 -H "Host: bookinfo-sidecar.n2.nested.sclabs.cloud"  http://bookinfo-gateway-istio.bookinfo-istio-sidecar/productpage
+            curl -s -o /dev/null --max-time 5 -H "Host: bookinfo-ambient.n2.nested.sclabs.cloud"  http://bookinfo-gateway-istio.bookinfo-istio-ambient/productpage
+            curl -s -o /dev/null --max-time 5 -H "Host: bookinfo-pure-k8s.n2.nested.sclabs.cloud" http://bookinfo-gateway-istio.bookinfo-pure-k8s/productpage
+            sleep 0.3
+          done

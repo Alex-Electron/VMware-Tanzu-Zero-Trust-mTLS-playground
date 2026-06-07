@@ -1,0 +1,36 @@
+# Credentials and Sensitive Files
+CREDENTIALS*.md
+*.pem
+*.b64
+*.crt
+*.key
+cookies.txt
+csrf.txt
+
+# Backups and Archives
+*.zip
+*.tar.gz
+*.bak
+*backup*.json
+*updated*.json
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# Virtual Environments
+.venv/
+__pycache__/
+
+# Large Binaries
+bin/
+
+
+# Dependencies fetched at runtime by step2 (not committed)
+pilot-2-self-signed/istio-*/
+
+# dev-only dashboard generator (kept in the working copy, not published)
+pilot-2-self-signed/build_dashboard.py
+.obsidian/

@@ -1,0 +1,30 @@
+# Self-signed lab CA via cert-manager: root CA + ClusterIssuer 'lab-ca-issuer' for pilot HTTPS.
+# For production, replace this with your corporate CA issuer.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+  namespace: cert-manager
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: lab-root-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: "Lab-Internal-Root-CA"   # cosmetic CA name (change to taste)
+  secretName: lab-root-ca-secret
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: lab-ca-issuer
+spec:
+  ca:
+    secretName: lab-root-ca-secret

@@ -1,0 +1,1039 @@
+{
+  "dashboard": {
+    "uid": "mesh-compare",
+    "title": "Mesh Comparison: Sidecar vs Ambient vs Plain",
+    "tags": [
+      "istio",
+      "comparison",
+      "pilot-2"
+    ],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 0,
+    "refresh": "10s",
+    "time": {
+      "from": "now-30m",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "type": "text",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 24,
+          "h": 3
+        },
+        "options": {
+          "mode": "markdown",
+          "content": "## Mesh Comparison: **Sidecar** vs **Ambient** vs **Pure-K8s** (bookinfo)\nEqual load on all three (`./load.sh on` / `loadtest.py`). Latency = gateway-view (Istio for all 3 -> fair end-to-end). Resource panels break down by container so the **istio-proxy / ztunnel / waypoint tax** is visible."
+        }
+      },
+      {
+        "id": 2,
+        "type": "row",
+        "title": "Latency & Throughput",
+        "collapsed": false,
+        "gridPos": {
+          "x": 0,
+          "y": 3,
+          "w": 24,
+          "h": 1
+        },
+        "panels": []
+      },
+      {
+        "id": 3,
+        "type": "timeseries",
+        "title": "Response time p99 (gateway -> productpage)",
+        "description": "p99 of full productpage response, measured by the ingress gateway (Istio for all 3).",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 4,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 18,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true
+            },
+            "decimals": 0
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "histogram_quantile(0.99, sum by(le,destination_service_namespace)(rate(istio_request_duration_milliseconds_bucket{source_workload=~\".*gateway.*\",destination_service_namespace=~\"bookinfo-.*\"}[$__rate_interval])))",
+            "legendFormat": "{{destination_service_namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "timeseries",
+        "title": "Response time p50",
+        "description": "",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 4,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 18,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true
+            },
+            "decimals": 0
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "histogram_quantile(0.50, sum by(le,destination_service_namespace)(rate(istio_request_duration_milliseconds_bucket{source_workload=~\".*gateway.*\",destination_service_namespace=~\"bookinfo-.*\"}[$__rate_interval])))",
+            "legendFormat": "{{destination_service_namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "timeseries",
+        "title": "Request rate (req/s)",
+        "description": "",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 12,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 18,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true
+            },
+            "decimals": 2
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(destination_service_namespace)(rate(istio_requests_total{source_workload=~\".*gateway.*\",destination_service_namespace=~\"bookinfo-.*\",reporter=\"source\"}[$__rate_interval]))",
+            "legendFormat": "{{destination_service_namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "timeseries",
+        "title": "Error rate 5xx/0 (req/s)",
+        "description": "Errors/drops. Under STRICT mTLS, non-mesh traffic is dropped (503/0).",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 12,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 18,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true
+            },
+            "decimals": 2
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(destination_service_namespace)(rate(istio_requests_total{source_workload=~\".*gateway.*\",destination_service_namespace=~\"bookinfo-.*\",reporter=\"source\",response_code=~\"5.*|0\"}[$__rate_interval]))",
+            "legendFormat": "{{destination_service_namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "row",
+        "title": "CPU",
+        "collapsed": false,
+        "gridPos": {
+          "x": 0,
+          "y": 20,
+          "w": 24,
+          "h": 1
+        },
+        "panels": []
+      },
+      {
+        "id": 8,
+        "type": "timeseries",
+        "title": "CPU total per approach (cores)",
+        "description": "Total container CPU per namespace.",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 21,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 18,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true
+            },
+            "decimals": 3
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(namespace)(rate(container_cpu_usage_seconds_total{namespace=~\"bookinfo-.*\",container!=\"\",container!=\"POD\"}[$__rate_interval]))",
+            "legendFormat": "{{namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "type": "timeseries",
+        "title": "Efficiency: CPU cores per 1000 req/s",
+        "description": "Lower = more efficient. This tracks the mesh overhead per unit of traffic.",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 21,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 18,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true
+            },
+            "decimals": 3
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(namespace)(rate(container_cpu_usage_seconds_total{namespace=~\"bookinfo-.*\",container!=\"\",container!=\"POD\"}[$__rate_interval])) / on(namespace)(label_replace(sum by(destination_service_namespace)(rate(istio_requests_total{source_workload=~\".*gateway.*\",destination_service_namespace=~\"bookinfo-.*\",reporter=\"source\"}[$__rate_interval])),\"namespace\",\"$1\",\"destination_service_namespace\",\"(.*)\")/1000)",
+            "legendFormat": "{{namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "type": "timeseries",
+        "title": "CPU by container — Sidecar (stacked)",
+        "description": "istio-proxy runs as a separate layer—usually matching the application's footprint.",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 29,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 1,
+              "fillOpacity": 45,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true,
+              "stacking": {
+                "mode": "normal",
+                "group": "A"
+              }
+            },
+            "decimals": 3
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(container)(rate(container_cpu_usage_seconds_total{namespace=\"bookinfo-istio-sidecar\",container!=\"\",container!=\"POD\"}[$__rate_interval]))",
+            "legendFormat": "{{container}}"
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "type": "timeseries",
+        "title": "CPU by container — Ambient (stacked)",
+        "description": "Ambient pods drop the istio-proxy sidecar (1/1); L7 routing shifts to the waypoint.",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 29,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 1,
+              "fillOpacity": 45,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true,
+              "stacking": {
+                "mode": "normal",
+                "group": "A"
+              }
+            },
+            "decimals": 3
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(container)(rate(container_cpu_usage_seconds_total{namespace=\"bookinfo-istio-ambient\",container!=\"\",container!=\"POD\"}[$__rate_interval]))",
+            "legendFormat": "{{container}}"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "type": "timeseries",
+        "title": "Mesh shared infra CPU (cores)",
+        "description": "Ambient overhead shifts to shared infra instead of running a sidecar in every pod.",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 37,
+          "w": 24,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 1,
+              "fillOpacity": 45,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true,
+              "stacking": {
+                "mode": "normal",
+                "group": "A"
+              }
+            },
+            "decimals": 3
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"istio-system\",pod=~\"ztunnel.*\"}[$__rate_interval]))",
+            "legendFormat": "ztunnel (per-node)"
+          },
+          {
+            "refId": "B",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"istio-system\",pod=~\"istio-cni.*\"}[$__rate_interval]))",
+            "legendFormat": "istio-cni (per-node)"
+          },
+          {
+            "refId": "C",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"istio-system\",pod=~\"istiod.*\"}[$__rate_interval]))",
+            "legendFormat": "istiod (control plane)"
+          },
+          {
+            "refId": "D",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"bookinfo-istio-ambient\",pod=~\".*waypoint.*\"}[$__rate_interval]))",
+            "legendFormat": "waypoint (ambient L7)"
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "type": "row",
+        "title": "Memory & Network",
+        "collapsed": false,
+        "gridPos": {
+          "x": 0,
+          "y": 45,
+          "w": 24,
+          "h": 1
+        },
+        "panels": []
+      },
+      {
+        "id": 14,
+        "type": "timeseries",
+        "title": "Memory total per approach",
+        "description": "",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 46,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 18,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(namespace)(container_memory_working_set_bytes{namespace=~\"bookinfo-.*\",container!=\"\",container!=\"POD\"})",
+            "legendFormat": "{{namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "type": "timeseries",
+        "title": "Memory by container — Sidecar (stacked)",
+        "description": "istio-proxy adds roughly constant memory overhead to every pod.",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 46,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 1,
+              "fillOpacity": 45,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true,
+              "stacking": {
+                "mode": "normal",
+                "group": "A"
+              }
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(container)(container_memory_working_set_bytes{namespace=\"bookinfo-istio-sidecar\",container!=\"\",container!=\"POD\"})",
+            "legendFormat": "{{container}}"
+          }
+        ]
+      },
+      {
+        "id": 16,
+        "type": "timeseries",
+        "title": "Network per approach (RX/TX)",
+        "description": "",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 54,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "Bps",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 18,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(namespace)(rate(container_network_receive_bytes_total{namespace=~\"bookinfo-.*\"}[$__rate_interval]))",
+            "legendFormat": "RX {{namespace}}"
+          },
+          {
+            "refId": "B",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(namespace)(rate(container_network_transmit_bytes_total{namespace=~\"bookinfo-.*\"}[$__rate_interval]))",
+            "legendFormat": "TX {{namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 17,
+        "type": "timeseries",
+        "title": "Ambient TCP connections opened (/s)",
+        "description": "ztunnel L4 mTLS tunnels (HBONE).",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 54,
+          "w": 12,
+          "h": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "cps",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 18,
+              "gradientMode": "opacity",
+              "showPoints": "never",
+              "spanNulls": true
+            },
+            "decimals": 2
+          },
+          "overrides": []
+        },
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "calcs": [
+              "lastNotNull",
+              "mean",
+              "max"
+            ]
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          }
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(destination_workload_namespace)(rate(istio_tcp_connections_opened_total{destination_workload_namespace=~\"bookinfo-.*\"}[$__rate_interval]))",
+            "legendFormat": "{{destination_workload_namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 18,
+        "type": "row",
+        "title": "Summary (current)",
+        "collapsed": false,
+        "gridPos": {
+          "x": 0,
+          "y": 62,
+          "w": 24,
+          "h": 1
+        },
+        "panels": []
+      },
+      {
+        "id": 19,
+        "type": "stat",
+        "title": "CPU cores",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 63,
+          "w": 8,
+          "h": 6
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            },
+            "decimals": 3
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "orientation": "horizontal",
+          "textMode": "value_and_name",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(namespace)(rate(container_cpu_usage_seconds_total{namespace=~\"bookinfo-.*\",container!=\"\",container!=\"POD\"}[$__rate_interval]))",
+            "legendFormat": "{{namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 20,
+        "type": "stat",
+        "title": "Memory",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 8,
+          "y": 63,
+          "w": 8,
+          "h": 6
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes",
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "orientation": "horizontal",
+          "textMode": "value_and_name",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "sum by(namespace)(container_memory_working_set_bytes{namespace=~\"bookinfo-.*\",container!=\"\",container!=\"POD\"})",
+            "legendFormat": "{{namespace}}"
+          }
+        ]
+      },
+      {
+        "id": 21,
+        "type": "stat",
+        "title": "Latency p99",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {
+          "x": 16,
+          "y": 63,
+          "w": 8,
+          "h": 6
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "color": {
+              "mode": "palette-classic"
+            },
+            "decimals": 0
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "orientation": "horizontal",
+          "textMode": "value_and_name",
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "targets": [
+          {
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "expr": "histogram_quantile(0.99, sum by(le,destination_service_namespace)(rate(istio_request_duration_milliseconds_bucket{source_workload=~\".*gateway.*\",destination_service_namespace=~\"bookinfo-.*\"}[$__rate_interval])))",
+            "legendFormat": "{{destination_service_namespace}}"
+          }
+        ]
+      }
+    ]
+  },
+  "overwrite": true,
+  "folderId": 0,
+  "message": "pilot-2 mesh comparison (detailed)"
+}

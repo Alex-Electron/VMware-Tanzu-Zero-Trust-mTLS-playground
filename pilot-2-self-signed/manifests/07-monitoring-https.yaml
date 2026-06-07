@@ -1,0 +1,28 @@
+# HTTPS leaf certs for Kiali/Grafana, signed by the self-signed lab CA (lab-ca-issuer). Pilot only.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kiali-tls
+  namespace: istio-system
+spec:
+  secretName: kiali-tls
+  commonName: kiali.n2.nested.sclabs.cloud   # domain from BASE_DOMAIN (env.sh), rendered by step3
+  dnsNames:
+    - kiali.n2.nested.sclabs.cloud           # domain from BASE_DOMAIN (env.sh), rendered by step3
+  issuerRef:
+    name: lab-ca-issuer
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: grafana-tls
+  namespace: istio-system
+spec:
+  secretName: grafana-tls
+  commonName: grafana.n2.nested.sclabs.cloud # domain from BASE_DOMAIN (env.sh), rendered by step3
+  dnsNames:
+    - grafana.n2.nested.sclabs.cloud         # domain from BASE_DOMAIN (env.sh), rendered by step3
+  issuerRef:
+    name: lab-ca-issuer
+    kind: ClusterIssuer

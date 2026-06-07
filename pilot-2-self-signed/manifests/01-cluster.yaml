@@ -1,0 +1,35 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: tkc-01-mtls                     # CHANGE: cluster name (must match TKC_NAME in env.sh)
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["198.51.100.0/12"]   # cluster-internal Service CIDR (change only if it clashes with your networks)
+    pods:
+      cidrBlocks: ["192.0.2.0/16"]      # cluster-internal Pod CIDR (change only if it clashes with your networks)
+    serviceDomain: "cluster.local"
+  topology:
+    classRef:
+      name: builtin-generic-v3.6.0      # CHANGE: ClusterClass matching your VKS version (v3.6.0 = VKS 3.6.x)
+      namespace: vmware-system-vks-public
+    version: v1.34.2---vmware.2-vkr.2    # CHANGE: a Kubernetes release present in your library (kubectl get kr)
+    controlPlane:
+      replicas: 1
+    workers:
+      machineDeployments:
+        - class: node-pool
+          name: node-pool-a
+          replicas: 3
+          variables:
+            overrides:
+              - name: vmClass
+                value: best-effort-medium  # CHANGE: VM class bound to your namespace (kubectl get virtualmachineclass -n <ns>)
+    variables:
+      - name: vmClass
+        value: best-effort-medium         # CHANGE: control-plane VM class (kubectl get virtualmachineclass -n <ns>)
+      - name: storageClass
+        value: k8s-policy                # CHANGE: storage class/policy in your namespace (kubectl get storageclass)
+# NOTE: top-level vmClass applies to control-plane. Workers override below.
+# Mixed vmClass avoids the catastrophic single-CP rolling scenario (etcd loss).
+# To resize CP later, recreate the whole cluster; do NOT patch vmClass live.
