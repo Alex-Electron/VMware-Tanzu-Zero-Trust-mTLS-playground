@@ -19,16 +19,9 @@
 
 ---
 
-## TL;DR
+## Abstract
 
-A worked, reproducible pilot on VMware VKS (formerly vSphere with Tanzu): Istio's Bookinfo deployed three ways in one cluster — no mesh, classic sidecar, and ambient — fronted by the native Avi (NSX ALB) load balancer through the Kubernetes Gateway API, under mesh-wide `STRICT` mTLS. What's worth taking away, measured rather than asserted:
-
-- **The landmine (Section 6).** Move the whole cluster to ambient the way every guide suggests, and external access stops working — silently. AKO still programs Avi, the VIP and pool come up healthy, yet every request dies at the VIP. Avi reaches your `STRICT` pods as an mTLS *client*, using a workload certificate AKO reads from `/etc/istio-output-certs` — a file **only the classic sidecar writes**. So exactly one namespace, `avi-system`, has to stay on the sidecar while everything else goes ambient.
-- **Your load balancer is inside the mesh (Section 6).** Verified against the controller: every Avi pool fronting a `STRICT` namespace carries a client certificate and a PKI profile. The Service Engine is not sitting *in front of* the mesh — it is an authenticated client *within* it.
-- **Ambient is cheaper, not free (Section 5).** Measured in-cluster: ambient adds ~+15 % p50 latency over no mesh; the classic sidecar ~+42 %. On memory the sidecar's tax is ~5× larger and grows with every pod, while ambient's is essentially fixed per node.
-- **No new kernel feature — and not eBPF (Section 4).** Ambient is HBONE + ztunnel in userspace, riding decade-old kernel primitives (TPROXY, network namespaces).
-
-Everything here is reproducible from the repository: pinned versions, the exact manifests, and the `step0`–`step4` scripts.
+This is a worked, reproducible pilot on VMware VKS (formerly vSphere with Tanzu) in which Istio's Bookinfo runs three ways in a single cluster — without a mesh, with the classic sidecar, and with the new ambient data plane — fronted by the native Avi (NSX ALB) load balancer through the Kubernetes Gateway API, under mesh-wide `STRICT` mTLS. Its central result is a silent failure mode that no guide warns about: migrate the whole cluster to ambient and external access stops working while every health signal stays green. Avi does not sit in front of the mesh. Verified against the controller, its Service Engine reaches each `STRICT` pod as an authenticated mTLS *client*, presenting a workload certificate that AKO reads from `/etc/istio-output-certs` — a file only the classic sidecar writes. Exactly one namespace, `avi-system`, must therefore keep its sidecar while everything else goes ambient. Measured in-cluster, ambient adds about 15 % to p50 latency over no mesh against the sidecar's 42 %, at roughly a fifth of the memory cost; and it needs no new kernel feature — ambient is HBONE and ztunnel in userspace, riding decade-old primitives such as TPROXY and network namespaces. Everything here is reproducible from the repository: pinned versions, the exact manifests, and the `step0`–`step4` scripts.
 
 ---
 
@@ -71,6 +64,27 @@ Encryption is only one of the cross-cutting concerns every microservice shares; 
 - **Observability** — per-request metrics and traces, because the mesh sees every call (it is what feeds the Kiali and Grafana views you'll see later).
 
 In this pilot Istio is the **Zero-Trust enforcement layer** inside the VKS cluster, and the external entry point is VMware's NSX Advanced Load Balancer (Avi), wired in through the Gateway API (Section 6).
+
+### The application under test: Bookinfo
+
+Every number and diagram in this article comes from **Bookinfo**, Istio's standard sample app: a single web page that shows one book, its details, and its reviews. It is split into four small services written in four different languages — that polyglot shape is why it became the canonical mesh demo, and why it stands in fairly for a real call graph rather than a single endpoint.
+
+```mermaid
+flowchart LR
+    U([client<br/>GET /productpage]):::plain --> P[productpage<br/>Python]:::app
+    P --> D[details<br/>Ruby]:::app
+    P --> R[reviews<br/>Java · v1 / v2 / v3]:::app
+    R -. "v2, v3 only" .-> RT[ratings<br/>Node.js]:::app
+    classDef app fill:#eef2f7,stroke:#6c757d,color:#1b1f23;
+    classDef plain fill:#eceff1,stroke:#90a4ae,color:#37474f;
+```
+
+- **`productpage`** (Python) is the front end. A `GET /productpage` calls `details` and `reviews` in parallel and renders the page.
+- **`details`** (Ruby) returns the book's metadata (ISBN, page count). It is a leaf — it calls nothing further.
+- **`reviews`** (Java) returns the review text. It runs as three versions side by side: v1 shows no stars, v2 adds black stars, v3 red ones. That trio is the classic traffic-routing demo; in this pilot they simply share the load round-robin.
+- **`ratings`** (Node.js) returns the star score. It is also a leaf, and the part that catches people out: `productpage` never calls it directly — it is reachable only through `reviews` v2 and v3. All four listen on port 9080.
+
+This structure is why two different request paths turn up in the benchmark (Section 5). A `/productpage` view is a multi-hop fan-out — `productpage` → `details` and `reviews`, then `reviews` → `ratings` — so in the meshed modes every one of those hops crosses the data plane, the way a real application would. A request to `/details/0` hits exactly one leaf service, isolating the cost of a single in-mesh hop. The first is the headline measurement; the second is the calibration.
 
 ---
 
@@ -313,7 +327,7 @@ Every figure above comes from `fortio` driven **from inside the cluster**, one m
 
 Two honest limits on reading these numbers:
 - **p99 is not a ranking metric here** — its order flipped between runs (the bare app sometimes showed a *worse* tail than the meshed modes, because a proxy smooths bursts through connection pooling). Rank on p50 and mean.
-- **`/productpage` is a multi-hop page view**, not a single proxy hop: it fans out to three services, and in sidecar mode every hop crosses two Envoys, so the cost compounds. That compounding is also why percentages mislead at the extremes. I re-ran the test against a trivial leaf service (`details`, ~8 ms baseline) to isolate one in-mesh hop: in absolute terms it adds about **+10 ms for sidecar and +2 ms for ambient** — figures that read as a *huge* percentage on an endpoint that does almost no work, then shrink to the moderate share in the table once the request does real work. So the multi-hop page view is the honest headline; the per-hop run only confirms the ratio — a sidecar hop costs roughly **5×** an ambient one.
+- **`/productpage` is a multi-hop page view**, not a single proxy hop: it spans `details`, `reviews` and — through `reviews` — `ratings`, and in sidecar mode every hop crosses two Envoys, so the cost compounds. That compounding is also why percentages mislead at the extremes. I re-ran the test against a trivial leaf service (`details`, ~8 ms baseline) to isolate one in-mesh hop: in absolute terms it adds about **+10 ms for sidecar and +2 ms for ambient** — figures that read as a *huge* percentage on an endpoint that does almost no work, then shrink to the moderate share in the table once the request does real work. So the multi-hop page view is the honest headline; the per-hop run only confirms the ratio — a sidecar hop costs roughly **5×** an ambient one.
 
 For calibration, the *shape* matches the public baselines. Istio's own [performance page](https://istio.io/latest/docs/ops/deployment/performance-and-scalability/) (Fortio, 1 KB payload, fixed connections, mTLS) reports per proxy at 1000 rps roughly **sidecar 0.20 vCPU / 60 MB, waypoint 0.25 vCPU / 60 MB, ztunnel 0.06 vCPU / 12 MB** — the same ordering we measured (ztunnel cheapest; waypoint heavy but single; sidecar multiplied per pod). [CNCF's independent testing](https://www.cncf.io/blog/2024/08/23/ambient-mesh-can-sidecar-less-istio-make-your-application-faster/) puts ambient near **+15 %** over baseline — exactly our ambient p50 tax. Our absolute milliseconds are smaller (50 rps on a nested lab, not 1000 rps on bare metal), but the direction and the ~5× memory ratio agree.
 
