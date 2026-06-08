@@ -445,6 +445,15 @@ flowchart TD
     classDef infra fill:#dbe8ff,stroke:#2c7be5,color:#11305f;
 ```
 
+### When the classic sidecar is the right choice
+
+The tree routes you to the sidecar at one gate, because that mode still does several things ambient cannot:
+
+1. **Per-workload key isolation.** A sidecar keeps its workload's SPIFFE private key inside that pod's own Envoy, so a compromise is contained to a single identity. Ambient's `ztunnel` is a per-node DaemonSet that holds the keys for every workload on the node. This is a genuine trade-off, not a clear win: the sidecar isolates better *between* workloads, but because its key lives inside the application pod, compromising the pod exposes that key — whereas in ambient the key sits in `ztunnel`, outside the pod, so a compromised pod yields no mesh key at all. For strict per-component isolation (regulated workloads), the sidecar's one-identity-per-proxy boundary is usually what auditors expect.
+2. **`EnvoyFilter` and per-pod proxy customization.** Ambient deliberately drops the `EnvoyFilter` API; its only extension point is WebAssembly, and only on a waypoint, applied per namespace or service. A workload that needs custom, pod-local Envoy configuration (or a legacy `EnvoyFilter`) has to stay on the sidecar.
+3. **Multi-cluster and VM / non-Kubernetes workloads.** The sidecar is the only mode with production-grade multi-cluster support and the only one that meshes VMs. Ambient is no longer strictly single-cluster — multi-cluster arrived as alpha in Istio 1.27 and multi-network reached beta in 1.29 — but it is explicitly *not* production-ready, and ambient has no VM support at all. (Ambient itself reached single-cluster GA in Istio 1.24.) Until that parity lands, a multi-cluster or VM mesh stays on the sidecar.
+4. **Third-party agents that read certs off the pod filesystem.** This is the general form of the `avi-system` exception in Section 6. Any operator or controller that expects Istio to write a workload certificate into a pod volume (`/etc/istio-output-certs`) needs the classic sidecar — only the sidecar writes that file. Ambient's `ztunnel` keeps the certificate in its own memory and never materializes it inside the pod, so a file-based consumer finds nothing. AKO is the case that bit us here; the rule is broader.
+
 ---
 
 ## 8. Reproduce it yourself
