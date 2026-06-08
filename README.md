@@ -27,7 +27,13 @@ This is a worked, reproducible pilot on VMware VKS (formerly vSphere with Tanzu)
 
 ## 1. Why plaintext Kubernetes isn't enough — what mTLS is
 
-In a default Kubernetes cluster, pods talk in plaintext. Compromise one frontend container, or get a shell on a worker node, and you can `tcpdump` the pod network and read database credentials, tokens, and business data straight off the wire. NetworkPolicies help, but they gate *who may connect, by IP and port* — they say nothing about *who the caller actually is*, and they encrypt nothing.
+Almost all the security spend around a Kubernetes cluster goes to the edge. The Avi load balancer terminates TLS, a WAF inspects the north-south request, the public certificates get rotated and audited, and the perimeter passes its review. Step inside the cluster and that picture inverts. On VKS — as on any default install — every pod lands on one flat L3 network, and the traffic between services crosses it in plaintext: `productpage` querying its database, a job presenting a service-account token to the API server, one service calling the next.
+
+So the question that decides your blast radius is not whether the edge is hardened, but what an attacker can do *after* the first foothold. Compromise one frontend container through an application bug, or get a shell on a worker node, and you need no second exploit: point `tcpdump` at the pod interface, or at the bridge every pod on the node hangs off, and the connections of services you never touched scroll past in cleartext — database connection strings, service-account bearer tokens, session cookies, whatever counts as regulated data in your environment. The reading is passive. You are attacking nothing; you are on the same wire, and the wire is readable.
+
+The reflex is to reach for `NetworkPolicy`, and it is worth being exact about why that does not close this. A `NetworkPolicy` is an IP-and-port allow-list, enforced by the CNI — Antrea on VKS. It gates *which* pods may open a connection to *which* others, by L3/L4 address; but those addresses are handed out by IPAM and inherited by anything running in the pod, so policy proves nothing about *who the caller actually is*, and it encrypts not one byte of what crosses the connection it permits. Terminating TLS at the ingress does not help either — that protects only the hop from the client to the load balancer, and the call then fans out to your services in plaintext. An IP is not an identity, and an audit that asks for encryption-in-transit and strong workload identity fails on both counts.
+
+Closing that gap takes a different primitive — one that binds a cryptographic identity to each workload and makes confidentiality the default rather than reachability the only control.
 
 mTLS (mutual TLS) moves the trust decision from network location to cryptographic identity. Ordinary TLS authenticates only the server — your browser verifies the website, the website has no proof of who you are. Mutual TLS authenticates both ends before a single byte of application data is sent:
 
@@ -64,6 +70,8 @@ Encryption is only one of the cross-cutting concerns every microservice shares; 
 - **Observability** — per-request metrics and traces, because the mesh sees every call (it is what feeds the Kiali and Grafana views you'll see later).
 
 In this pilot Istio is the **Zero-Trust enforcement layer** inside the VKS cluster, and the external entry point is VMware's NSX Advanced Load Balancer (Avi), wired in through the Gateway API (Section 6).
+
+And it is less of an addition than the four names suggest. Tanzu is the cluster, Avi (NSX ALB) is its native load balancer, Antrea is its CNI — the platform you already operate. AKO is just the small, standard controller that lets Avi be driven from Kubernetes Services and the Gateway API; on a VKS cluster fronted by Avi, that is how ingress already works. The one genuinely new layer is Istio, and in ambient mode it is the cheapest form of it: a per-workload SPIFFE identity dropped onto east-west traffic you are already routing — no sidecar in every pod, no new kernel feature. Not four heavy tools, then, but a platform you already run plus one thin identity layer.
 
 ### The application under test: Bookinfo
 
