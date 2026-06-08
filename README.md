@@ -445,6 +445,18 @@ flowchart TD
     classDef infra fill:#dbe8ff,stroke:#2c7be5,color:#11305f;
 ```
 
+### Could you do this without Istio?
+
+Worth asking honestly, because for parts of the goal the answer is yes — and the most common objection is correct as far as it goes.
+
+**"Antrea already encrypts my pod traffic."** True. Antrea's [`trafficEncryptionMode`](https://antrea.io/docs/main/docs/traffic-encryption/) encrypts inter-node pod traffic on the wire, with either IPsec ESP or WireGuard, and on a standard VKS encap (Geneve) datapath that option is available to you. If your requirement is confidentiality against a passive eavesdropper on the node-to-node fabric — a "bytes between nodes must be ciphertext" compliance checkbox — this solves it, and WireGuard's in-kernel datapath does it with less overhead than any userspace TLS proxy. It is a legitimate layer to keep *under* a mesh, not a strawman.
+
+But it answers a *different* question than the one this pilot poses, and the mechanism is the reason. The cryptographic peer in Antrea encryption is the **node**, not the workload. IPsec authenticates with a single cluster-wide pre-shared key; WireGuard with per-node keys. The tunnel proves "a node in this cluster," never "this is the `checkout` service account." There is no SPIFFE ID, no per-pod certificate, no client certificate presented per connection — and a rogue pod on a legitimate node rides that node's tunnel for free, indistinguishable from the real caller. Two pods co-scheduled on one node never enter the tunnel at all; their traffic crosses the OVS bridge in clear, regardless of `trafficEncryptionMode`. Policy keyed on this — even Antrea's service-account-based `NetworkPolicy` — still resolves to pod IPs and is enforced on the spoofable IP datapath, not on a verified identity. So you get encryption between nodes; you do not get per-workload identity, mutual workload authentication, or identity-based authorization.
+
+**[Linkerd](https://linkerd.io/)** is the honest "you might not need Istio" contender: transparent per-workload mTLS with each certificate bound to the pod's Kubernetes service account, plus who-talks-to-whom telemetry, at lower operational cost than Istio — most of what we are after. The same holds, for the identity half only, of **[SPIFFE/SPIRE](https://spiffe.io/)** without a data plane (it issues the SVIDs but enforces nothing on the wire), and of **per-service library mTLS** (real and end-to-end, but enforced in every codebase — one missed path silently breaks `STRICT`, and there is no central policy object).
+
+What flips this specific stack back to Istio is the one requirement none of them meet: the **external load balancer must reach `STRICT` pods as an authenticated mTLS client.** The Avi Service Engine is not a meshed pod and holds no service-account token, no IPsec key — so it cannot obtain a mesh identity through any of these mechanisms, and none of them can mint a credential for an off-mesh L4 load balancer. Istio's classic sidecar closes exactly this gap by writing the workload certificate to `/etc/istio-output-certs`, where AKO reads it and presents it on Avi's behalf (Section 6). Strip that requirement and the case for Linkerd, or Antrea plus something, is real and defensible. Keep it — as a VKS cluster fronted by native Avi and AKO does — and the mesh is what closes the loop. These are not mutually exclusive, either: you can run Antrea WireGuard for underlay confidentiality *and* Istio for workload identity — complementary layers, not competing answers.
+
 ### When the classic sidecar is the right choice
 
 The tree routes you to the sidecar at one gate, because that mode still does several things ambient cannot:
