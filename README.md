@@ -189,7 +189,7 @@ Ambient removes the per-pod proxy entirely and splits the data plane in two:
 1. **ztunnel** — a lightweight Rust DaemonSet, **one per node**. `istio-cni` redirects each pod's traffic to its node's ztunnel, which carries L4 **mTLS** over HBONE (mTLS inside an HTTP/2 `CONNECT` tunnel). One ztunnel serves every pod on the node.
 2. **waypoint** — a standalone Envoy, **one per namespace** (the usual choice; it can also be scoped to a single service or service account), deployed *only where you need L7* (retries, header routing, L7 policy).
 
-You onboard a namespace with the label `istio.io/dataplane-mode: ambient` — no injection; the app pods stay **1/1** and never know they are meshed.
+You onboard a namespace with the label `istio.io/dataplane-mode: ambient` — no injection; the app pods stay **1/1** and never know they are meshed. On VKS there was nothing more to it: ambient's `istio-cni` and ztunnel run on the cluster's default **Antrea** CNI with no CNI-specific tuning — `istio-cni-node` and `ztunnel` come up as ordinary DaemonSets across the nodes, and the redirect is programmed by `istio-cni` in each pod's network namespace.
 
 ```mermaid
 flowchart LR
@@ -379,7 +379,23 @@ So the cluster runs a deliberate hybrid, and this is the single most important d
 
 Remove that one exception and the ingress fails silently: AKO still comes up and still programs Avi, but the Service Engine has no certificate to present, the STRICT gateway pods reject it, and every external request dies at the VIP. **An all-ambient cluster cannot serve Avi-fronted mTLS ingress** — and nothing in the logs points at the missing sidecar.
 
-The pinned AKO values that wire this up (full file: [`manifests/03-ako-values.yaml`](pilot-2-self-signed/manifests/03-ako-values.yaml)):
+**How to catch it.** Because the logs stay quiet, you confirm this structurally — by checking that the *cause* is in place, not by grepping for an effect. The whole read path is visible from the API, no `exec` needed:
+
+```bash
+# 1. Is the sidecar still there? (a native sidecar is an always-on init container,
+#    which is also why Kiali reports "Istio Container: Not found")
+kubectl -n avi-system get pod ako-0 -o jsonpath='{.spec.initContainers[*].name}'
+#   healthy: ...istio-validation istio-proxy   |   broken: no istio-proxy — the namespace went ambient
+
+# 2. Does AKO mount the directory the sidecar fills?
+kubectl -n avi-system get pod ako-0 \
+  -o jsonpath='{.spec.containers[?(@.name=="ako")].volumeMounts[*].mountPath}'
+#   the ako container mounts /etc/istio-output-certs/ — with no sidecar, nothing ever writes into it
+```
+
+On the Avi side the tell is the same inversion: the Virtual Service stays green on its health checks while the pool member fails the mTLS handshake. There is no error line to find — so you verify the sidecar is *present*, rather than wait for a log that never comes.
+
+The pinned AKO values that wire this up (full file: [`pilot-2-self-signed/manifests/03-ako-values.yaml`](pilot-2-self-signed/manifests/03-ako-values.yaml)):
 
 ```yaml
 AKOSettings:
@@ -404,18 +420,20 @@ NetworkSettings:
 A decision guide, not a verdict — in practice the right answer is a mix:
 
 - **Plain Kubernetes** is fine for a sandbox or a throwaway namespace. The moment you have compliance, multi-tenancy, or anything you would not want to see in a `tcpdump`, IP/port `NetworkPolicy` is not enough: no encryption, no workload identity.
-- **Ambient is my default for business workloads** — Istio itself doesn't call either mode the default (its docs frame it as a choice, "Sidecar or ambient?", and note sidecar is currently the only mode that supports multi-cluster and VM workloads). For single-cluster, no-VM workloads I reach for ambient: transparent L4 mTLS via ztunnel, no per-pod proxy, cost that scales with nodes instead of pods, no rolling restart on upgrade. Add a **waypoint** only in the namespaces that genuinely need L7 (retries, header routing, L7 authz), remembering it is a fixed per-namespace cost, not per-pod (Section 5).
-- **The classic sidecar stays useful, but targeted.** Keep it where a workload truly needs its own L7 proxy at the pod edge — and, in this stack specifically, for the **`avi-system`** namespace, because AKO's mTLS-into-mesh depends on the sidecar writing `/etc/istio-output-certs` (Section 6). That is the load-bearing exception, not a default.
+- **Ambient is my default for business workloads** — Istio itself doesn't call either mode the default (its docs frame it as a choice, "Sidecar or ambient?", and note sidecar is the only mode with production-grade multi-cluster support and the only one that runs VM / non-Kubernetes workloads). For single-cluster, no-VM workloads I reach for ambient: transparent L4 mTLS via ztunnel, no per-pod proxy, cost that scales with nodes instead of pods, no rolling restart on upgrade. Add a **waypoint** only in the namespaces that genuinely need L7 (retries, header routing, L7 authz), remembering it is a fixed per-namespace cost, not per-pod (Section 5).
+- **The classic sidecar stays useful, but targeted.** Keep it where you genuinely need what ambient cannot give — a multi-cluster mesh, VM / non-Kubernetes workloads, the `EnvoyFilter` API, or the strongest per-workload key isolation — and, in this stack specifically, for the **`avi-system`** namespace, because AKO's mTLS-into-mesh depends on the sidecar writing `/etc/istio-output-certs` (Section 6). That is the load-bearing exception, not a default.
 - **Get to `STRICT` early — but mind greenfield vs brownfield.** For a greenfield or fully-meshed namespace (including ambient, where ztunnel covers every enrolled workload) apply a `STRICT` `PeerAuthentication` from the start — there are no plaintext legacy clients to break. Note that even ambient ships `PERMISSIVE` by default, so `STRICT` is always an explicit opt-in. When you are onboarding *existing* workloads, Istio recommends `PERMISSIVE` as a temporary bridge while you migrate clients, then locking the namespace down to `STRICT` (confirm no plaintext remains first — the Grafana mTLS view makes that visible). In my experience `PERMISSIVE` outlives its purpose and plaintext lingers, so treat it as a short bridge to end deliberately, not a multi-year default.
 
 ```mermaid
 flowchart TD
     Q1{"Need encryption / workload identity?"} -->|"no"| P["plain Kubernetes + NetworkPolicy"]
-    Q1 -->|"yes"| Q2{"Need L7 per workload?<br/>(retries, header routing, L7 authz)"}
-    Q2 -->|"no — just mTLS"| A["ambient: node ztunnel"]
-    Q2 -->|"yes, in some namespaces"| AW["ambient + waypoint<br/>(only those namespaces)"]
-    Q2 -->|"yes, broadly / legacy edge"| S["classic sidecar"]
-    A --> NOTE["always keep avi-system on the sidecar (Section 6)"]
+    Q1 -->|"yes"| Q2{"Multi-cluster mesh, VM / non-Kubernetes workloads,<br/>EnvoyFilter, or strongest per-workload key isolation?"}
+    Q2 -->|"yes — any of these"| S["classic sidecar<br/>(the only mode that covers them)"]
+    Q2 -->|"no — single-cluster, all-Kubernetes"| Q3{"Need L7 per workload?<br/>(retries, header routing, L7 authz)"}
+    Q3 -->|"no — just mTLS"| A["ambient: node ztunnel"]
+    Q3 -->|"yes, in some namespaces"| AW["ambient + waypoint<br/>(only those namespaces)"]
+    S --> NOTE["in this stack, avi-system stays on the sidecar regardless (Section 6)"]
+    A --> NOTE
     AW --> NOTE
     class P plain
     class A,AW ambient
